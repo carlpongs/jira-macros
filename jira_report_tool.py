@@ -311,27 +311,35 @@ def generate_action_item_tracker(issues, output_path):
             if desc_text or comments_text:
                 # Description in merged cols A-B
                 ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
-                cell = ws.cell(row=row, column=1,
-                               value=f"Desc: {desc_text}" if desc_text else "")
+                desc_display = f"Desc: {desc_text}" if desc_text else ""
+                cell = ws.cell(row=row, column=1, value=desc_display)
                 cell.font = desc_font
                 cell.fill = detail_fill
                 cell.border = thin_border
-                cell.alignment = Alignment(vertical="center", wrap_text=True)
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
                 # Apply fill/border to merged cell B
                 ws.cell(row=row, column=2).fill = detail_fill
                 ws.cell(row=row, column=2).border = thin_border
 
                 # Comments in merged cols C-D
                 ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=4)
-                cell = ws.cell(row=row, column=3,
-                               value=f"Comments: {comments_text}" if comments_text else "")
+                comments_display = f"Comments: {comments_text}" if comments_text else ""
+                cell = ws.cell(row=row, column=3, value=comments_display)
                 cell.font = comment_font
                 cell.fill = detail_fill
                 cell.border = thin_border
-                cell.alignment = Alignment(vertical="center", wrap_text=True)
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
                 # Apply fill/border to merged cell D
                 ws.cell(row=row, column=4).fill = detail_fill
                 ws.cell(row=row, column=4).border = thin_border
+
+                # Auto-size row height based on text length
+                # Approx chars per line: cols A+B ~56 chars, cols C+D ~72 chars
+                # Font size 8 ≈ 13 points per line
+                desc_lines = max(1, len(desc_display) // 50 + 1) if desc_display else 1
+                comment_lines = max(1, len(comments_display) // 65 + 1) if comments_display else 1
+                needed_lines = max(desc_lines, comment_lines)
+                ws.row_dimensions[row].height = max(15, needed_lines * 13)
                 row += 1
 
         # Spacer row
