@@ -500,35 +500,19 @@ class JiraReportApp:
             messagebox.showwarning("No Data", "Import a Jira export first.")
             return
 
-        default_name = f"Action_Item_Tracker_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        initial_dir = os.path.expanduser("~")
-        if self.filepath:
-            candidate = os.path.dirname(os.path.abspath(self.filepath))
-            if os.path.isdir(candidate):
-                initial_dir = candidate
-        path = filedialog.asksaveasfilename(
-            title="Save Action Item Tracker",
-            initialdir=initial_dir,
-            defaultextension=".xlsx",
-            initialfile=default_name,
-            filetypes=[("Excel files", "*.xlsx")]
-        )
-        if not path:
-            return
+        # Auto-save into an "exports" folder next to this script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        exports_dir = os.path.join(script_dir, "exports")
+        os.makedirs(exports_dir, exist_ok=True)
 
-        # Normalize path for Windows (tkinter can return forward-slash paths)
-        path = os.path.normpath(path)
-
-        # Ensure the target directory exists
-        save_dir = os.path.dirname(path)
-        if save_dir and not os.path.isdir(save_dir):
-            os.makedirs(save_dir, exist_ok=True)
+        filename = f"Action_Item_Tracker_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        path = os.path.join(exports_dir, filename)
 
         try:
             generate_action_item_tracker(self.issues, path)
-            self.status_var.set(f"✅ Exported to {os.path.basename(path)}")
+            self.status_var.set(f"✅ Exported to exports/{filename}")
 
-            # Offer to open the file (Windows: os.startfile, others: xdg-open / open)
+            # Offer to open the file
             open_it = messagebox.askyesno(
                 "Export Complete",
                 f"Action Item Tracker saved!\n\n{path}\n\nOpen the file now?"
