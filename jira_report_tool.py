@@ -58,7 +58,9 @@ def parse_jira_export(filepath):
     Returns a list of dicts with keys: id, summary, assignee, status, labels,
     description, comments, component, priority, created, updated."""
 
-    wb = openpyxl.load_workbook(filepath, data_only=True, keep_vba=True)
+    # keep_vba only for macro-enabled files (.xltm / .xlsm)
+    use_vba = filepath.lower().endswith((".xltm", ".xlsm"))
+    wb = openpyxl.load_workbook(filepath, data_only=True, keep_vba=use_vba)
     ws = wb.active
 
     issues = []
@@ -469,6 +471,9 @@ class JiraReportApp:
         if not path:
             return
 
+        # Normalize path for Windows (tkinter can return forward-slash paths)
+        path = os.path.normpath(path)
+
         try:
             self.filepath = path
             self.issues = parse_jira_export(path)
@@ -510,6 +515,14 @@ class JiraReportApp:
         )
         if not path:
             return
+
+        # Normalize path for Windows (tkinter can return forward-slash paths)
+        path = os.path.normpath(path)
+
+        # Ensure the target directory exists
+        save_dir = os.path.dirname(path)
+        if save_dir and not os.path.isdir(save_dir):
+            os.makedirs(save_dir, exist_ok=True)
 
         try:
             generate_action_item_tracker(self.issues, path)
