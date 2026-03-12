@@ -18,6 +18,7 @@ import sys
 import re
 import collections
 import subprocess
+import traceback
 
 # ─── Category order from the Jira board ─────────────────────────────────────
 CATEGORY_ORDER = [
@@ -473,6 +474,8 @@ class JiraReportApp:
 
         # Normalize path for Windows (tkinter can return forward-slash paths)
         path = os.path.normpath(path)
+        print(f"[DEBUG] Import path: {path!r}")
+        print(f"[DEBUG] File exists: {os.path.isfile(path)}")
 
         try:
             self.filepath = path
@@ -489,11 +492,14 @@ class JiraReportApp:
 
             self._update_stats()
             self.btn_export.state(["!disabled"])
-            self.status_var.set(f"✅ Loaded {len(self.issues)} issues from {os.path.basename(path)}")
+            self.status_var.set(f"\u2705 Loaded {len(self.issues)} issues from {os.path.basename(path)}")
 
         except Exception as e:
-            messagebox.showerror("Import Error", f"Failed to parse file:\n{e}")
-            self.status_var.set(f"❌ Error: {e}")
+            tb = traceback.format_exc()
+            print(f"[DEBUG] Import error:\n{tb}")
+            messagebox.showerror("Import Error",
+                                 f"Failed to parse file:\n\nPath: {path}\n\nError: {e}")
+            self.status_var.set(f"\u274c Error: {e}")
 
     def _export(self):
         if not self.issues:
@@ -507,10 +513,12 @@ class JiraReportApp:
 
         filename = f"Action_Item_Tracker_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         path = os.path.join(exports_dir, filename)
+        print(f"[DEBUG] Export path: {path!r}")
+        print(f"[DEBUG] Export dir exists: {os.path.isdir(exports_dir)}")
 
         try:
             generate_action_item_tracker(self.issues, path)
-            self.status_var.set(f"✅ Exported to exports/{filename}")
+            self.status_var.set(f"\u2705 Exported to exports/{filename}")
 
             # Offer to open the file
             open_it = messagebox.askyesno(
@@ -521,8 +529,11 @@ class JiraReportApp:
                 _open_file(path)
 
         except Exception as e:
-            messagebox.showerror("Export Error", f"Failed to generate tracker:\n{e}")
-            self.status_var.set(f"❌ Export error: {e}")
+            tb = traceback.format_exc()
+            print(f"[DEBUG] Export error:\n{tb}")
+            messagebox.showerror("Export Error",
+                                 f"Failed to generate tracker:\n\nPath: {path}\n\nError: {e}")
+            self.status_var.set(f"\u274c Export error: {e}")
 
 
 def _open_file(filepath):
