@@ -3,6 +3,8 @@
 Jira Kanban Export → Action Item Tracker
 Converts a multi-issue Jira Excel export into a formatted one-page
 Action Item Tracker Excel document, grouped by category.
+
+Optimized for Windows — uses Segoe UI / Aptos fonts, os.startfile().
 """
 
 import tkinter as tk
@@ -12,8 +14,10 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from datetime import datetime
 import os
+import sys
 import re
 import collections
+import subprocess
 
 # ─── Category order from the Jira board ─────────────────────────────────────
 CATEGORY_ORDER = [
@@ -189,11 +193,12 @@ def generate_action_item_tracker(issues, output_path):
     ws.page_setup.orientation = "landscape"
     ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
 
-    # Column widths
-    ws.column_dimensions["A"].width = 12
-    ws.column_dimensions["B"].width = 50
-    ws.column_dimensions["C"].width = 25
-    ws.column_dimensions["D"].width = 14
+    # Column widths  — 4 main columns; description & comments go in a detail row underneath
+    NUM_COLS = 4
+    ws.column_dimensions["A"].width = 12   # Issue ID  /  Description (left half)
+    ws.column_dimensions["B"].width = 44   # Summary   /  Description (right half)
+    ws.column_dimensions["C"].width = 22   # Assignee  /  Comments (left half)
+    ws.column_dimensions["D"].width = 50   # Status    /  Comments (right half)
 
     # Styles
     thin_border = Border(
@@ -212,8 +217,10 @@ def generate_action_item_tracker(issues, output_path):
     data_font = Font(name="Aptos", size=9)
     desc_font = Font(name="Aptos", size=8, italic=True, color="444444")
     comment_font = Font(name="Aptos", size=8, color="666666")
+    detail_label_font = Font(name="Aptos", size=8, bold=True, italic=True, color="333333")
     fill_alt1 = PatternFill(start_color=XL_ROW_ALT1, end_color=XL_ROW_ALT1, fill_type="solid")
     fill_alt2 = PatternFill(start_color=XL_ROW_ALT2, end_color=XL_ROW_ALT2, fill_type="solid")
+    detail_fill = PatternFill(start_color="EDF0F5", end_color="EDF0F5", fill_type="solid")
 
     # Status colors
     status_colors = {
@@ -227,14 +234,14 @@ def generate_action_item_tracker(issues, output_path):
     row = 1
 
     # ── Title ──
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=NUM_COLS)
     cell = ws.cell(row=row, column=1, value="ACTION ITEM TRACKER")
     cell.font = title_font
     cell.alignment = Alignment(horizontal="center", vertical="center")
     row += 1
 
     # ── Date ──
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=NUM_COLS)
     cell = ws.cell(row=row, column=1, value=f"Generated: {datetime.now().strftime('%d %b %Y %H:%M')}")
     cell.font = date_font
     cell.alignment = Alignment(horizontal="center")
@@ -245,7 +252,7 @@ def generate_action_item_tracker(issues, output_path):
     status_counts = collections.Counter(i["status"] for i in issues)
     stats = f"Total: {total}  |  "
     stats += "  |  ".join(f"{s}: {c}" for s, c in sorted(status_counts.items()))
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=NUM_COLS)
     cell = ws.cell(row=row, column=1, value=stats)
     cell.font = Font(name="Aptos", size=9, bold=True, color="333333")
     cell.alignment = Alignment(horizontal="center")
@@ -253,18 +260,18 @@ def generate_action_item_tracker(issues, output_path):
 
     # ── Categories ──
     for cat_name, cat_issues in grouped:
-        # Category header
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+        # Category header — spans all 4 columns
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=NUM_COLS)
         cell = ws.cell(row=row, column=1, value=f"▸ {cat_name} ({len(cat_issues)})")
         cell.font = cat_font
         cell.fill = cat_fill
         cell.alignment = Alignment(vertical="center")
-        for col in range(1, 5):
+        for col in range(1, NUM_COLS + 1):
             ws.cell(row=row, column=col).fill = cat_fill
             ws.cell(row=row, column=col).border = thin_border
         row += 1
 
-        # Column headers
+        # Column headers — 4 columns
         headers = ["Issue ID", "Summary", "Assignee", "Status"]
         for col, h in enumerate(headers, 1):
             cell = ws.cell(row=row, column=col, value=h)
@@ -274,9 +281,13 @@ def generate_action_item_tracker(issues, output_path):
             cell.alignment = Alignment(horizontal="center", vertical="center")
         row += 1
 
-        # Issue rows
+        # Issue rows — each issue gets TWO rows:
+        #   Row 1: Issue ID | Summary | Assignee | Status
+        #   Row 2: Description (cols A-B)  |  Comments (cols C-D)
         for idx, issue in enumerate(cat_issues):
             fill = fill_alt1 if idx % 2 == 0 else fill_alt2
+
+            # ── Main row ──
             values = [issue["id"], issue["summary"], issue["assignee"], issue["status"]]
             for col, val in enumerate(values, 1):
                 cell = ws.cell(row=row, column=col, value=val)
@@ -286,27 +297,39 @@ def generate_action_item_tracker(issues, output_path):
                 cell.alignment = Alignment(vertical="center", wrap_text=(col == 2))
             row += 1
 
-        # Description + Comments section (merged across all 4 cols)
-        desc_comments = []
-        for issue in cat_issues:
-            parts = []
-            if issue.get("description"):
-                parts.append(f"[{issue['id']}] {issue['description']}")
+            # ── Detail row (Description | Comments) ──
+            desc_text = issue.get("description", "")
+            comments_parts = []
             for c in issue.get("comments", []):
-                parts.append(f"  └ {c['author']} ({c['date']}): {c['body']}")
-            if parts:
-                desc_comments.append("\n".join(parts))
+                comments_parts.append(f"{c['author']} ({c['date']}): {c['body']}")
+            comments_text = "  |  ".join(comments_parts)
 
-        if desc_comments:
-            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-            cell = ws.cell(row=row, column=1, value="\n".join(desc_comments))
-            cell.font = desc_font
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
-            cell.border = thin_border
-            # Auto-size row height roughly
-            num_lines = cell.value.count("\n") + 1
-            ws.row_dimensions[row].height = max(15, min(num_lines * 12, 120))
-            row += 1
+            # Only add detail row if there is something to show
+            if desc_text or comments_text:
+                # Description in merged cols A-B
+                ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+                cell = ws.cell(row=row, column=1,
+                               value=f"Desc: {desc_text}" if desc_text else "")
+                cell.font = desc_font
+                cell.fill = detail_fill
+                cell.border = thin_border
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
+                # Apply fill/border to merged cell B
+                ws.cell(row=row, column=2).fill = detail_fill
+                ws.cell(row=row, column=2).border = thin_border
+
+                # Comments in merged cols C-D
+                ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=4)
+                cell = ws.cell(row=row, column=3,
+                               value=f"Comments: {comments_text}" if comments_text else "")
+                cell.font = comment_font
+                cell.fill = detail_fill
+                cell.border = thin_border
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
+                # Apply fill/border to merged cell D
+                ws.cell(row=row, column=4).fill = detail_fill
+                ws.cell(row=row, column=4).border = thin_border
+                row += 1
 
         # Spacer row
         row += 1
@@ -437,8 +460,10 @@ class JiraReportApp:
             lbl.pack(side="left", padx=(0, 6))
 
     def _import(self):
+        initial_dir = os.path.expanduser("~")
         path = filedialog.askopenfilename(
             title="Select Jira Export File",
+            initialdir=initial_dir,
             filetypes=[("Excel files", "*.xlsx *.xltm *.xls"), ("All files", "*.*")]
         )
         if not path:
@@ -471,8 +496,10 @@ class JiraReportApp:
             return
 
         default_name = f"Action_Item_Tracker_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        initial_dir = os.path.dirname(self.filepath) if self.filepath else os.path.expanduser("~")
         path = filedialog.asksaveasfilename(
             title="Save Action Item Tracker",
+            initialdir=initial_dir,
             defaultextension=".xlsx",
             initialfile=default_name,
             filetypes=[("Excel files", "*.xlsx")]
@@ -483,11 +510,31 @@ class JiraReportApp:
         try:
             generate_action_item_tracker(self.issues, path)
             self.status_var.set(f"✅ Exported to {os.path.basename(path)}")
-            messagebox.showinfo("Export Complete",
-                                f"Action Item Tracker saved!\n\n{path}")
+
+            # Offer to open the file (Windows: os.startfile, others: xdg-open / open)
+            open_it = messagebox.askyesno(
+                "Export Complete",
+                f"Action Item Tracker saved!\n\n{path}\n\nOpen the file now?"
+            )
+            if open_it:
+                _open_file(path)
+
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to generate tracker:\n{e}")
             self.status_var.set(f"❌ Export error: {e}")
+
+
+def _open_file(filepath):
+    """Open a file with the system default application (cross-platform)."""
+    try:
+        if sys.platform == "win32":
+            os.startfile(filepath)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", filepath])
+        else:
+            subprocess.Popen(["xdg-open", filepath])
+    except Exception:
+        pass  # silently ignore if opener unavailable
 
 
 def main():

@@ -231,4 +231,7 @@ def generate_sample(output_path, num_issues=45):
 
 
 if __name__ == "__main__":
-    generate_sample("/home/carl/jira-macros/sample_jira_export.xlsx", num_issues=45)
+    import os as _os
+    _script_dir = _os.path.dirname(_os.path.abspath(__file__))
+    generate_sample(_os.path.join(_script_dir, "sample_jira_export.xlsx"), num_issues=45)
+
