@@ -496,7 +496,11 @@ class JiraReportApp:
             return
 
         default_name = f"Action_Item_Tracker_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        initial_dir = os.path.dirname(self.filepath) if self.filepath else os.path.expanduser("~")
+        initial_dir = os.path.expanduser("~")
+        if self.filepath:
+            candidate = os.path.dirname(os.path.abspath(self.filepath))
+            if os.path.isdir(candidate):
+                initial_dir = candidate
         path = filedialog.asksaveasfilename(
             title="Save Action Item Tracker",
             initialdir=initial_dir,
